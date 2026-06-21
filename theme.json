@@ -1,0 +1,17 @@
+{
+  "id": "CustomFavicon",
+  "name": "Custom Favicon",
+  "description": "Custom favicons for websites — override tab image + urlbar identity icon by domain",
+  "author": "Impre",
+  "version": "1.0.0",
+  "js": true,
+  "scripts": {
+    "custom-favicon.uc.js": {
+      "name": "Custom Favicon",
+      "description": "Domain-based favicon override for tabs + urlbar",
+      "include": ["chrome://browser/content/browser.xhtml"]
+    }
+  },
+  "tags": ["Javascript"],
+  "fork": ["zen"]
+}
