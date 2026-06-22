@@ -41,6 +41,9 @@
         'translate.google.fr':     'GTrad.png',
         'translate.google.com':    'GTrad.png',
 
+        // ── Dev ──
+        'github.com':              'github.png',
+
         // ── General ──
         'app.raindrop.io':         'Raindrop.png',
         'youtube.com':             'youtube.png',
