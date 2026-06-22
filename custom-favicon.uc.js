@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name           Custom Favicon
-// @version        1.0.0
+// @version        1.1.0
 // @description    Custom favicons for websites — override tab image + urlbar identity icon by domain
 // @author         Impre
 // @include        main
@@ -111,10 +111,11 @@
 
         const iconUrl = getIconForTab(gBrowser.selectedTab);
         if (iconUrl) {
-            identityIcon.style.listStyleImage = `url("${iconUrl}")`;
+            // !important beats Firefox's own identity-icon CSS updates (verifiedDomain, etc.)
+            identityIcon.style.setProperty('list-style-image', `url("${iconUrl}")`, 'important');
         } else {
             // Clear override — let Firefox use the real favicon
-            identityIcon.style.listStyleImage = '';
+            identityIcon.style.removeProperty('list-style-image');
         }
     }
 
@@ -181,7 +182,7 @@
         applyToAllTabs();
         applyToUrlbar();
 
-        console.log(`[CustomFavicon] v1.0 initialized — ${Object.keys(FAVICON_MAP).length} sites configured`);
+        console.log(`[CustomFavicon] v1.1 initialized — ${Object.keys(FAVICON_MAP).length} sites configured`);
     }
 
     if (document.readyState === 'complete' || document.readyState === 'interactive') init();

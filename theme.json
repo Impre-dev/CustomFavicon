@@ -3,7 +3,7 @@
   "name": "Custom Favicon",
   "description": "Custom favicons for websites — override tab image + urlbar identity icon by domain",
   "author": "Impre",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "js": true,
   "scripts": {
     "custom-favicon.uc.js": {
