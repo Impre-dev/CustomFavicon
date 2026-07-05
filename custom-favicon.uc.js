@@ -51,6 +51,12 @@
         'soundcloud.com':          'Soundcloud.png',
         'nexusmods.com':           'nexus.png',
         'mod.io':                  'modio.png',
+
+        // ── Streaming ──
+        'franime.fr':              'franime.png',
+        'voiranime.rip':           'voiranime.png',
+        'french-stream.one':       'french-stream.png',
+        
     };
 
     // Cache: domain pattern → file:// URL
