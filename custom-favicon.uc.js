@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           Custom Favicon
-// @version        1.1.0
-// @description    Custom favicons for websites — override tab image + urlbar identity icon by domain
+// @version        2.0.0
+// @description    Custom favicons for websites — 3-tier: custom icons → Google auto → Firefox default
 // @author         Impre
 // @include        main
 // ==/UserScript==
@@ -10,80 +10,67 @@
     'use strict';
 
     const MOD_ID = 'CustomFavicon';
-    const ICONS_DIR = PathUtils.join(PathUtils.profileDir, 'chrome', 'sine-mods', MOD_ID, 'icons');
+    const MOD_DIR = PathUtils.join(PathUtils.profileDir, 'chrome', 'sine-mods', MOD_ID);
+    const ICONS_DIR = PathUtils.join(MOD_DIR, 'icons');
+    const MAP_FILE = PathUtils.join(MOD_DIR, 'favicon-map.json');
+
+    // Google Favicon v2 — max resolution
+    const GOOGLE_FAVICON_URL = 'https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://DOMAIN&size=256';
 
     // ═══════════════════════════════════════════════════════════════════════
-    //  CONFIGURATION — Map: domain pattern → icon filename
+    //  CONFIGURATION — Loaded from favicon-map.json
     //
-    //  Le domain est matché contre le hostname de l'URL.
-    //  "youtube.com" matche www.youtube.com, m.youtube.com, youtube.com
-    //  Pour un sous-domaine spécifique : "chat.qwen.ai"
+    //  JSON structure:
+    //  {
+    //      "custom": { "domain.com": "icon.png", ... },  // Override with local icon
+    //      "auto": ["domain.com", ...]                    // Auto-fetch from Google
+    //  }
+    //
+    //  Domain matching: hostname === domain || hostname.endsWith('.' + domain)
+    //  "youtube.com" matches www.youtube.com, m.youtube.com, youtube.com
     // ═══════════════════════════════════════════════════════════════════════
 
-    const FAVICON_MAP = {
-        // ── IA ──
-        'aistudio.google.com':     'gemini.png',
-        'kimi.com':                'kimi.png',
-        'chat.qwen.ai':            'qwen.png',
-        'chat.deepseek.com':       'deepseek.png',
-        'z.ai':                    'zai.png',
-        'claude.ai':               'claude.png',
-        'chatgpt.com':             'chatgpt.png',
-        'grok.com':                'grok.png',
-        'arena.ai':                'LMArena.png',
-        'chat.mistral.ai':         'LeChat.png',
-        'meta.ai':                 'metaai.png',
-        'lumo.proton.me':          'lumo.png',
+    // Caches: domain pattern → resolved URL
+    let customUrlCache = {};  // domain → file:/// URL
+    let autoDomains = [];     // array of domain patterns
 
-        // ── Outils ──
-        'photoroom.com':           'photoroom.png',
-        'labs.google':             'Whisk.png',
-        'translate.google.fr':     'GTrad.png',
-        'translate.google.com':    'GTrad.png',
-
-        // ── Dev ──
-        'github.com':              'github.png',
-
-        // ── General ──
-        'app.raindrop.io':         'Raindrop.png',
-        'youtube.com':             'youtube.png',
-        'app.tvtime.com':          'TVShowTime.png',
-        'soundcloud.com':          'Soundcloud.png',
-        'nexusmods.com':           'nexus.png',
-        'mod.io':                  'modio.png',
-
-        // ── Streaming ──
-        'franime.fr':              'franime.png',
-        'voiranime.rip':           'voiranime.png',
-        'french-stream.one':       'french-stream.png',
-        
-    };
-
-    // Cache: domain pattern → file:// URL
-    const iconUrlCache = {};
-
-    function buildIconUrls() {
-        for (const [domain, iconFile] of Object.entries(FAVICON_MAP)) {
+    function buildCustomCache(customMap) {
+        customUrlCache = {};
+        for (const [domain, iconFile] of Object.entries(customMap)) {
             const iconPath = PathUtils.join(ICONS_DIR, iconFile);
-            iconUrlCache[domain] = 'file:///' + iconPath.replace(/\\/g, '/').replace(/ /g, '%20');
+            customUrlCache[domain] = 'file:///' + iconPath.replace(/\\/g, '/').replace(/ /g, '%20');
         }
     }
 
+    function googleFaviconUrl(domain) {
+        return GOOGLE_FAVICON_URL.replace('DOMAIN', domain);
+    }
+
     /**
-     * Returns the custom icon URL if the hostname matches a pattern, null otherwise.
-     * Match logic: hostname === domain || hostname.endsWith('.' + domain)
+     * Resolves the icon URL for a given hostname using 3-tier priority:
+     *   1. Custom (local icon file)
+     *   2. Auto (Google favicon v2)
+     *   3. null (Firefox handles it)
      */
     function matchDomain(hostname) {
-        for (const [domain, iconUrl] of Object.entries(iconUrlCache)) {
+        // Tier 1: Custom overrides
+        for (const [domain, iconUrl] of Object.entries(customUrlCache)) {
             if (hostname === domain || hostname.endsWith('.' + domain)) {
                 return iconUrl;
             }
         }
+        // Tier 2: Auto (Google)
+        for (const domain of autoDomains) {
+            if (hostname === domain || hostname.endsWith('.' + domain)) {
+                return googleFaviconUrl(domain);
+            }
+        }
+        // Tier 3: Firefox default
         return null;
     }
 
     /**
-     * Get custom icon URL for a tab's current URL.
+     * Get icon URL for a tab's current URL.
      * Returns null if no match or invalid URL.
      */
     function getIconForTab(tab) {
@@ -94,6 +81,26 @@
             return matchDomain(hostname);
         } catch (e) {
             return null;
+        }
+    }
+
+    // ── Config loading ─────────────────────────────────────────────────────
+
+    async function loadConfig() {
+        try {
+            const config = await IOUtils.readJSON(MAP_FILE);
+            const custom = config.custom || {};
+            autoDomains = Array.isArray(config.auto) ? config.auto : [];
+
+            buildCustomCache(custom);
+            applyToAllTabs();
+            applyToUrlbar();
+
+            const customCount = Object.keys(custom).length;
+            const autoCount = autoDomains.length;
+            console.log(`[CustomFavicon] Config rechargée — ${customCount} custom, ${autoCount} auto`);
+        } catch (e) {
+            console.error('[CustomFavicon] Erreur chargement favicon-map.json:', e.message);
         }
     }
 
@@ -174,7 +181,8 @@
         if (!window.gBrowser || !gBrowser.tabContainer) { setTimeout(init, 500); return; }
         window.__customFaviconPatched = true;
 
-        buildIconUrls();
+        // Expose hot-reload function
+        window.__reloadFavicons = loadConfig;
 
         // Tab icon overrides
         gBrowser.tabContainer.addEventListener('TabAttrModified', onTabAttrModified);
@@ -187,11 +195,13 @@
         // Urlbar + cross-tab URL change detection
         gBrowser.addTabsProgressListener(progressListener);
 
-        // Apply to all existing tabs + urlbar
-        applyToAllTabs();
-        applyToUrlbar();
+        // Load config then apply
+        loadConfig().then(() => {
+            applyToAllTabs();
+            applyToUrlbar();
+        });
 
-        console.log(`[CustomFavicon] v1.1 initialized — ${Object.keys(FAVICON_MAP).length} sites configured`);
+        console.log('[CustomFavicon] v2.0 initialized — lecture de favicon-map.json');
     }
 
     if (document.readyState === 'complete' || document.readyState === 'interactive') init();

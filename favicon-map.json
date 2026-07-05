@@ -1,0 +1,31 @@
+{
+  "custom": {
+    "aistudio.google.com": "gemini.png",
+    "kimi.com": "kimi.png",
+    "chat.qwen.ai": "qwen.png",
+    "chat.deepseek.com": "deepseek.png",
+    "z.ai": "zai.png",
+    "claude.ai": "claude.png",
+    "chatgpt.com": "chatgpt.png",
+    "grok.com": "grok.png",
+    "arena.ai": "LMArena.png",
+    "chat.mistral.ai": "LeChat.png",
+    "meta.ai": "metaai.png",
+    "lumo.proton.me": "lumo.png",
+    "photoroom.com": "photoroom.png",
+    "labs.google": "Whisk.png",
+    "translate.google.fr": "GTrad.png",
+    "translate.google.com": "GTrad.png",
+    "github.com": "github.png",
+    "app.raindrop.io": "Raindrop.png",
+    "youtube.com": "youtube.png",
+    "app.tvtime.com": "TVShowTime.png",
+    "soundcloud.com": "Soundcloud.png",
+    "nexusmods.com": "nexus.png",
+    "mod.io": "modio.png",
+    "franime.fr": "franime.png",
+    "voiranime.rip": "voiranime.png",
+    "french-stream.one": "french-stream.png"
+  },
+  "auto": []
+}
