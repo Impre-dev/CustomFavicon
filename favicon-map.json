@@ -28,5 +28,6 @@
     "french-stream.one": "french-stream.png",
     "perplexity.ai": "perplexity.png",
     "senscritique.com": "SensCritique.png"
-  }
+  },
+  "exclude": ["localhost", "example.com"]
 }

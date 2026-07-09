@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           Custom Favicon
-// @version        2.1.0
-// @description    Custom favicons — custom overrides → Google auto for all HTTP(S) sites → skip internal pages
+// @version        2.1.1
+// @description    Custom favicons — custom overrides → Google auto for public sites → skip localhost/IPs/excluded
 // @author         Impre
 // @include        main
 // ==/UserScript==
@@ -18,18 +18,20 @@
     //  CONFIGURATION — favicon-map.json
     //
     //  {
-    //      "custom": { "domain.com": "icon.png", ... }
+    //      "custom": { "domain.com": "icon.png", ... },
+    //      "exclude": ["localhost", "example.com", ...]
     //  }
     //
     //  Logic:
     //    1. Custom override → local icon from icons/
-    //    2. Any HTTP(S) site not in custom → Google favicon v2 (256px)
-    //    3. about:*, chrome://, file:// → skip entirely (other mods handle them)
+    //    2. Public HTTP(S) site not excluded → Google favicon v2 (256px)
+    //    3. about:*, chrome://, localhost, IPs, excluded → skip entirely
     //
     //  Domain matching: hostname === domain || hostname.endsWith('.' + domain)
     // ═══════════════════════════════════════════════════════════════════════
 
     let customUrlCache = {};  // domain → file:/// URL
+    let excludePatterns = []; // domains to skip (no Google favicon)
 
     function buildCustomCache(customMap) {
         customUrlCache = {};
@@ -43,12 +45,32 @@
         return `https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${hostname}&size=256`;
     }
 
+    /** Check if hostname is an IP address (IPv4 or IPv6) */
+    function isIPAddress(hostname) {
+        // IPv4: x.x.x.x
+        if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname)) return true;
+        // IPv6: contains ':'
+        if (hostname.includes(':')) return true;
+        return false;
+    }
+
+    /** Check if hostname should be excluded from Google favicon */
+    function isExcluded(hostname) {
+        // Auto-exclude IP addresses
+        if (isIPAddress(hostname)) return true;
+        // Check user-configured exclude patterns
+        for (const pattern of excludePatterns) {
+            if (hostname === pattern || hostname.endsWith('.' + pattern)) return true;
+        }
+        return false;
+    }
+
     /**
      * Resolves the icon URL for a tab's current URL.
      *
      * Tier 1: Custom override (local icon)
-     * Tier 2: Google favicon v2 (256px) — auto for ALL HTTP(S) sites
-     * Tier 3: null (skip) — about:*, chrome://, etc.
+     * Tier 2: Google favicon v2 (256px) — auto for ALL public HTTP(S) sites
+     * Tier 3: null (skip) — about:*, chrome://, localhost, IPs, excluded domains
      */
     function getIconForTab(tab) {
         if (!tab || !tab.linkedBrowser) return null;
@@ -64,14 +86,17 @@
             return null;
         }
 
-        // Tier 1: Custom overrides
+        // Tier 1: Custom overrides (always takes priority, even for excluded domains)
         for (const [domain, iconUrl] of Object.entries(customUrlCache)) {
             if (hostname === domain || hostname.endsWith('.' + domain)) {
                 return iconUrl;
             }
         }
 
-        // Tier 2: Google favicon for everything else
+        // Tier 2: Skip excluded domains (localhost, IPs, example.com, etc.)
+        if (isExcluded(hostname)) return null;
+
+        // Tier 3: Google favicon for everything else
         return googleFaviconUrl(hostname);
     }
 
@@ -81,10 +106,11 @@
         try {
             const config = await IOUtils.readJSON(MAP_FILE);
             const custom = config.custom || {};
+            excludePatterns = Array.isArray(config.exclude) ? config.exclude : [];
             buildCustomCache(custom);
             applyToAllTabs();
             applyToUrlbar();
-            console.log(`[CustomFavicon] Config rechargée — ${Object.keys(custom).length} custom, Google auto pour le reste`);
+            console.log(`[CustomFavicon] Config rechargée — ${Object.keys(custom).length} custom, ${excludePatterns.length} exclus, Google auto pour le reste`);
         } catch (e) {
             console.error('[CustomFavicon] Erreur chargement favicon-map.json:', e.message);
         }
