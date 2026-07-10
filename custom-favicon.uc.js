@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           Custom Favicon
-// @version        2.1.1
-// @description    Custom favicons — custom overrides → Google auto for public sites → skip localhost/IPs/excluded
+// @version        2.2.0
+// @description    Custom favicons — custom overrides → Google auto (quality-checked) → skip internal/local
 // @author         Impre
 // @include        main
 // ==/UserScript==
@@ -14,6 +14,9 @@
     const ICONS_DIR = PathUtils.join(MOD_DIR, 'icons');
     const MAP_FILE = PathUtils.join(MOD_DIR, 'favicon-map.json');
 
+    // Minimum acceptable favicon dimension from Google (filters placeholder/globe)
+    const QUALITY_THRESHOLD = 64;
+
     // ═══════════════════════════════════════════════════════════════════════
     //  CONFIGURATION — favicon-map.json
     //
@@ -23,15 +26,17 @@
     //  }
     //
     //  Logic:
-    //    1. Custom override → local icon from icons/
+    //    1. Custom override → local icon from icons/ (applied immediately)
     //    2. Public HTTP(S) site not excluded → Google favicon v2 (256px)
-    //    3. about:*, chrome://, localhost, IPs, excluded → skip entirely
+    //       → Quality check: preload image, only apply if naturalWidth >= 64
+    //    3. about:*, chrome://, localhost, IPs, excluded, low-quality → skip
     //
     //  Domain matching: hostname === domain || hostname.endsWith('.' + domain)
     // ═══════════════════════════════════════════════════════════════════════
 
-    let customUrlCache = {};  // domain → file:/// URL
-    let excludePatterns = []; // domains to skip (no Google favicon)
+    let customUrlCache = {};       // domain → file:/// URL
+    let excludePatterns = [];      // domains to skip (no Google favicon)
+    const googleQualityCache = {}; // hostname → true (good) | false (bad quality)
 
     function buildCustomCache(customMap) {
         customUrlCache = {};
@@ -47,18 +52,14 @@
 
     /** Check if hostname is an IP address (IPv4 or IPv6) */
     function isIPAddress(hostname) {
-        // IPv4: x.x.x.x
         if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname)) return true;
-        // IPv6: contains ':'
         if (hostname.includes(':')) return true;
         return false;
     }
 
     /** Check if hostname should be excluded from Google favicon */
     function isExcluded(hostname) {
-        // Auto-exclude IP addresses
         if (isIPAddress(hostname)) return true;
-        // Check user-configured exclude patterns
         for (const pattern of excludePatterns) {
             if (hostname === pattern || hostname.endsWith('.' + pattern)) return true;
         }
@@ -66,13 +67,35 @@
     }
 
     /**
-     * Resolves the icon URL for a tab's current URL.
-     *
-     * Tier 1: Custom override (local icon)
-     * Tier 2: Google favicon v2 (256px) — auto for ALL public HTTP(S) sites
-     * Tier 3: null (skip) — about:*, chrome://, localhost, IPs, excluded domains
+     * Preload Google favicon and check its quality.
+     * Callback receives the URL if quality >= threshold, null otherwise.
+     * Result is cached per hostname.
      */
-    function getIconForTab(tab) {
+    function checkGoogleQuality(hostname, url, callback) {
+        // Already checked — return cached result
+        if (hostname in googleQualityCache) {
+            callback(googleQualityCache[hostname] ? url : null);
+            return;
+        }
+
+        const img = new Image();
+        img.onload = function () {
+            const good = img.naturalWidth >= QUALITY_THRESHOLD;
+            googleQualityCache[hostname] = good;
+            callback(good ? url : null);
+        };
+        img.onerror = function () {
+            googleQualityCache[hostname] = false;
+            callback(null);
+        };
+        img.src = url;
+    }
+
+    /**
+     * Resolves the icon for a tab's current URL.
+     * Returns { url, hostname, isCustom } or null.
+     */
+    function resolveIcon(tab) {
         if (!tab || !tab.linkedBrowser) return null;
         const url = tab.linkedBrowser.currentURI.spec;
 
@@ -86,18 +109,18 @@
             return null;
         }
 
-        // Tier 1: Custom overrides (always takes priority, even for excluded domains)
+        // Tier 1: Custom overrides (always priority, even for excluded domains)
         for (const [domain, iconUrl] of Object.entries(customUrlCache)) {
             if (hostname === domain || hostname.endsWith('.' + domain)) {
-                return iconUrl;
+                return { url: iconUrl, hostname, isCustom: true };
             }
         }
 
         // Tier 2: Skip excluded domains (localhost, IPs, example.com, etc.)
         if (isExcluded(hostname)) return null;
 
-        // Tier 3: Google favicon for everything else
-        return googleFaviconUrl(hostname);
+        // Tier 3: Google favicon (quality-checked at apply time)
+        return { url: googleFaviconUrl(hostname), hostname, isCustom: false };
     }
 
     // ── Config loading ─────────────────────────────────────────────────────
@@ -110,7 +133,7 @@
             buildCustomCache(custom);
             applyToAllTabs();
             applyToUrlbar();
-            console.log(`[CustomFavicon] Config rechargée — ${Object.keys(custom).length} custom, ${excludePatterns.length} exclus, Google auto pour le reste`);
+            console.log(`[CustomFavicon] Config rechargée — ${Object.keys(custom).length} custom, ${excludePatterns.length} exclus, Google auto (quality ≥ ${QUALITY_THRESHOLD}px)`);
         } catch (e) {
             console.error('[CustomFavicon] Erreur chargement favicon-map.json:', e.message);
         }
@@ -119,11 +142,26 @@
     // ── Tab icon override ──────────────────────────────────────────────────
 
     function applyToTab(tab) {
-        if (!tab || !tab.linkedBrowser) return;
-        const iconUrl = getIconForTab(tab);
-        if (!iconUrl) return;
-        if (tab.getAttribute('image') === iconUrl) return;
-        tab.setAttribute('image', iconUrl);
+        const result = resolveIcon(tab);
+        if (!result) return;
+
+        if (result.isCustom) {
+            // Custom: apply immediately
+            if (tab.getAttribute('image') !== result.url) {
+                tab.setAttribute('image', result.url);
+            }
+        } else {
+            // Google: check quality first
+            checkGoogleQuality(result.hostname, result.url, (goodUrl) => {
+                if (!goodUrl) return;
+                // Tab might have navigated since — verify it's still the same hostname
+                const currentResult = resolveIcon(tab);
+                if (!currentResult || currentResult.hostname !== result.hostname) return;
+                if (tab.getAttribute('image') !== goodUrl) {
+                    tab.setAttribute('image', goodUrl);
+                }
+            });
+        }
     }
 
     function applyToAllTabs() {
@@ -136,11 +174,27 @@
         const identityIcon = document.getElementById('identity-icon');
         if (!identityIcon) return;
 
-        const iconUrl = getIconForTab(gBrowser.selectedTab);
-        if (iconUrl) {
-            identityIcon.style.setProperty('list-style-image', `url("${iconUrl}")`, 'important');
-        } else {
+        const result = resolveIcon(gBrowser.selectedTab);
+        if (!result) {
             identityIcon.style.removeProperty('list-style-image');
+            return;
+        }
+
+        if (result.isCustom) {
+            identityIcon.style.setProperty('list-style-image', `url("${result.url}")`, 'important');
+        } else {
+            // Google: check quality
+            checkGoogleQuality(result.hostname, result.url, (goodUrl) => {
+                // Re-check: user might have switched tabs
+                const currentResult = resolveIcon(gBrowser.selectedTab);
+                if (!currentResult || currentResult.hostname !== result.hostname) return;
+
+                if (goodUrl) {
+                    identityIcon.style.setProperty('list-style-image', `url("${goodUrl}")`, 'important');
+                } else {
+                    identityIcon.style.removeProperty('list-style-image');
+                }
+            });
         }
     }
 
@@ -202,7 +256,7 @@
             applyToUrlbar();
         });
 
-        console.log('[CustomFavicon] v2.1 initialized — custom overrides + Google auto');
+        console.log(`[CustomFavicon] v2.2 initialized — custom + Google auto (quality ≥ ${QUALITY_THRESHOLD}px)`);
     }
 
     if (document.readyState === 'complete' || document.readyState === 'interactive') init();
