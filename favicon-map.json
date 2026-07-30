@@ -27,7 +27,9 @@
     "voiranime.rip": "voiranime.png",
     "french-stream.one": "french-stream.png",
     "perplexity.ai": "perplexity.png",
-    "senscritique.com": "SensCritique.png"
+    "senscritique.com": "SensCritique.png",
+    "zen-browser.app": "Zen.png",
+    "sineorg.github.io": "Sine.png"
   },
   "exclude": ["localhost", "example.com"]
 }
