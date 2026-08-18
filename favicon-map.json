@@ -29,7 +29,9 @@
     "perplexity.ai": "perplexity.png",
     "senscritique.com": "SensCritique.png",
     "zen-browser.app": "Zen.png",
-    "sineorg.github.io": "Sine.png"
+    "sineorg.github.io": "Sine.png",
+    "startpage.com": "startpage.png",
+    "pi.ai": "pi.png"
   },
   "exclude": ["localhost", "example.com"]
 }
