@@ -31,7 +31,8 @@
     "zen-browser.app": "Zen.png",
     "sineorg.github.io": "Sine.png",
     "startpage.com": "startpage.png",
-    "pi.ai": "Chatbots/pi.png"
+    "pi.ai": "Chatbots/pi.png",
+    "localhost": "watchar.png"
   },
   "exclude": ["localhost", "example.com"]
 }
